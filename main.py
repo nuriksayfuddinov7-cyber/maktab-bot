@@ -183,3 +183,11 @@ async def main():
 
 if __name__ == "__main__":
     asyncio.run(main())
+import os
+from aiogram import Bot, Dispatcher
+
+# Render'dagi muhit o'zgaruvchisidan tokenni olish uchun:
+BOT_TOKEN = os.getenv("BOT_TOKEN")
+
+bot = Bot(token=BOT_TOKEN)
+dp = Dispatcher()
