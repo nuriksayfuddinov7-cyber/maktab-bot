@@ -8,7 +8,7 @@ from aiogram.fsm.storage.memory import MemoryStorage
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 # Bot va Admin ID
-BOT_TOKEN = "YOUR_BOT_TOKEN_HERE"
+BOT_TOKEN = "8895093853:AAEZqCDVCWDly9seBbKqBh-SWIR5sMMzw-E"
 ADMIN_IDS = [728027531,8489027633]  # Bu yerga o'zingizning Telegram ID ingizni yozing
 
 bot = Bot(token=BOT_TOKEN)
