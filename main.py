@@ -12,11 +12,11 @@ from aiohttp import web
 # Loggingni yoqish
 logging.basicConfig(level=logging.INFO)
 
-# Tokenni Render environment variable'dan olish
-BOT_TOKEN = os.getenv("8895093853:AAEZqCDVCWDly9seBbKqBh-SWIR5sMMzw-E")
+# Token to'g'ridan-to'g'ri kiritildi
+BOT_TOKEN = "8895093853:AAEZqCDVCWDly9seBbKqBh-SWIR5sMMzw-E"
 ADMIN_IDS = [
-    728027531,848902763
-]  # O'zingizning Telegram ID ingizni yozing (masalan: 123456789)
+    728027531,8489027633
+]  # O'zingizning Telegram ID ingizni shu yerga yozishingiz mumkin
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
