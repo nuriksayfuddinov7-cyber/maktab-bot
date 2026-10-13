@@ -159,3 +159,27 @@ async def send_feedback_to_admin(message: types.Message, state: FSMContext):
         "Murojaatingiz muvaffaqiyatli yuborildi! Rahmat.", parse_mode="HTML"
     )
     await state.clear()
+import os
+from aiohttp import web
+
+# Oddiy veb-server (Render portni talab qilgani uchun)
+async def handle(request):
+    return web.Response(text="Bot ishlayapti!")
+
+app = web.Application()
+app.router.add_get("/", handle)
+
+async def web_server():
+    runner = web.AppRunner(app)
+    await runner.setup()
+    port = int(os.environ.get("PORT", 10000))
+    site = web.TCPSite(runner, "0.0.0.0", port)
+    await site.start()
+
+async def main():
+    # Veb-server va botni birga ishga tushirish
+    await web_server()
+    await dp.start_polling(bot)
+
+if __name__ == "__main__":
+    asyncio.run(main())
