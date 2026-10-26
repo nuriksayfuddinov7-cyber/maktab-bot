@@ -6,7 +6,12 @@ from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
-from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+from aiogram.types import (
+    InlineKeyboardButton,
+    InlineKeyboardMarkup,
+    KeyboardButton,
+    ReplyKeyboardMarkup,
+)
 from aiohttp import web
 
 # Loggingni yoqish
@@ -14,18 +19,26 @@ logging.basicConfig(level=logging.INFO)
 
 # Token to'g'ridan-to'g'ri kiritildi
 BOT_TOKEN = "8895093853:AAEZqCDVCWDly9seBbKqBh-SWIR5sMMzw-E"
-ADMIN_IDS = [
-    728027531,8489027633
-]  # O'zingizning Telegram ID ingizni shu yerga yozishingiz mumkin
+ADMIN_IDS = [728027531, 8489027633]
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
+
+# Saqlanuvchi ma'lumotlar uchun o'zgaruvchilar
+CURRENT_RATING = (
+    "🏆 <b>Maktab reytingi:</b>\n\n"
+    "1. 11-A sinf - 150 ball\n"
+    "2. 9-B sinf - 120 ball\n"
+    "3. 10-A sinf - 95 ball"
+)
+ACTIVE_CONTESTS = "Hozircha faol tanlovlar mavjud emas."
 
 
 # State (Holatlar)
 class AdminStates(StatesGroup):
   waiting_for_contest_name = State()
   waiting_for_announcement = State()
+  waiting_for_rating = State()
 
 
 class StudentStates(StatesGroup):
@@ -33,15 +46,71 @@ class StudentStates(StatesGroup):
   waiting_for_message = State()
 
 
-# Start buyrug'i
-@dp.message(Command("start"))
-async def cmd_start(message: types.Message):
-  await message.answer(
-      "Assalomu alaykum! Maktab boshqaruv botiga xush kelibsiz."
+# Admin uchun pastki tugmalar (Reply keyboard)
+def get_admin_keyboard():
+  return ReplyKeyboardMarkup(
+      keyboard=[
+          [
+              KeyboardButton(text="🏆 Faol tanlovlar"),
+              KeyboardButton(text="📊 Reyting"),
+          ],
+          [
+              KeyboardButton(text="➕ Yangi tanlov qo'shish"),
+              KeyboardButton(text="📢 E'lon yuborish"),
+          ],
+          [KeyboardButton(text="📊 Reyting qo'shish")],
+          [KeyboardButton(text="✍️ Taklif / Shikoyat yuborish")],
+      ],
+      resize_keyboard=True,
   )
 
 
+def get_user_keyboard():
+  return ReplyKeyboardMarkup(
+      keyboard=[
+          [
+              KeyboardButton(text="🏆 Faol tanlovlar"),
+              KeyboardButton(text="📊 Reyting"),
+          ],
+          [KeyboardButton(text="✍️ Taklif / Shikoyat yuborish")],
+      ],
+      resize_keyboard=True,
+  )
+
+
+# Start buyrug'i
+@dp.message(Command("start"))
+async def cmd_start(message: types.Message):
+  if ADMIN_IDS and message.from_user.id in ADMIN_IDS:
+    await message.answer(
+        "Assalomu alaykum, Hurmatli Admin! Kerakli bo'limni tanlang:",
+        reply_markup=get_admin_keyboard(),
+    )
+  else:
+    await message.answer(
+        "Assalomu alaykum! Maktab boshqaruv botiga xush kelibsiz. Kerakli"
+        " bo'limni tanlang:",
+        reply_markup=get_user_keyboard(),
+    )
+
+
+# Faol tanlovlar
+@dp.message(F.text == "🏆 Faol tanlovlar")
+async def show_active_contests(message: types.Message):
+  await message.answer(
+      f"🎯 <b>Faol tanlovlar:</b>\n\n{ACTIVE_CONTESTS}", parse_mode="HTML"
+  )
+
+
+# Reytingni ko'rsatish
+@dp.message(F.text == "📊 Reyting")
+@dp.message(Command("reyting"))
+async def show_rating(message: types.Message):
+  await message.answer(CURRENT_RATING, parse_mode="HTML")
+
+
 # 1. ADMIN: Tanlov qo'shish
+@dp.message(F.text == "➕ Yangi tanlov qo'shish")
 @dp.message(Command("yangi_tanlov"))
 async def start_add_contest(message: types.Message, state: FSMContext):
   if ADMIN_IDS and message.from_user.id not in ADMIN_IDS:
@@ -52,25 +121,39 @@ async def start_add_contest(message: types.Message, state: FSMContext):
 
 @dp.message(AdminStates.waiting_for_contest_name)
 async def process_contest(message: types.Message, state: FSMContext):
+  global ACTIVE_CONTESTS
+  ACTIVE_CONTESTS = message.text
   await message.answer(
-      f"Tanlov saqlandi: <b>{message.text}</b>", parse_mode="HTML"
+      f"✅ Tanlov muvaffaqiyatli saqlandi va yangilandi:\n\n<b>{message.text}</b>",
+      parse_mode="HTML",
   )
   await state.clear()
 
 
-# 2. REYTING TIZIMI
-@dp.message(Command("reyting"))
-async def show_rating(message: types.Message):
-  rating_text = (
-      "🏆 <b>Maktab reytingi:</b>\n\n"
-      "1. 11-A sinf - 150 ball\n"
-      "2. 9-B sinf - 120 ball\n"
-      "3. 10-A sinf - 95 ball"
+# 2. ADMIN: Reyting qo'shish
+@dp.message(F.text == "📊 Reyting qo'shish")
+async def start_add_rating(message: types.Message, state: FSMContext):
+  if ADMIN_IDS and message.from_user.id not in ADMIN_IDS:
+    return
+  await message.answer(
+      "Yangi reyting ma'lumotlarini yuboring:\n(Masalan:\n1. 11-A sinf -"
+      " 180 ball\n2. 10-B sinf - 150 ball)"
   )
-  await message.answer(rating_text, parse_mode="HTML")
+  await state.set_state(AdminStates.waiting_for_rating)
+
+
+@dp.message(AdminStates.waiting_for_rating)
+async def process_new_rating(message: types.Message, state: FSMContext):
+  global CURRENT_RATING
+  CURRENT_RATING = f"🏆 <b>Maktab reytingi:</b>\n\n{message.text}"
+  await message.answer(
+      "✅ Reyting muvaffaqiyatli yangilandi!", parse_mode="HTML"
+  )
+  await state.clear()
 
 
 # 3. ADMIN: Sinflarga e'lon yuborish
+@dp.message(F.text == "📢 E'lon yuborish")
 @dp.message(Command("elon"))
 async def start_announcement(message: types.Message, state: FSMContext):
   if ADMIN_IDS and message.from_user.id not in ADMIN_IDS:
@@ -101,7 +184,8 @@ async def choose_class_for_announcement(
   await state.clear()
 
 
-# 4. O'QUVCHI: Murojaat yoki Taklif yuborish
+# 4. Murojaat yoki Taklif yuborish
+@dp.message(F.text == "✍️ Taklif / Shikoyat yuborish")
 @dp.message(Command("murojaat"))
 async def start_feedback(message: types.Message, state: FSMContext):
   keyboard = InlineKeyboardMarkup(
@@ -136,7 +220,8 @@ async def process_recipient(callback: types.CallbackQuery, state: FSMContext):
   await state.update_data(target=target)
 
   await callback.message.edit_text(
-      f"<b>{target}</b>ga yubormoqchi bo'lgan murojaatingiz matnini yozib qoldiring:"
+      f"<b>{target}</b>ga yubormoqchi bo'lgan murojaatingiz matnini yozib"
+      " qoldiring:"
   )
   await state.set_state(StudentStates.waiting_for_message)
 
