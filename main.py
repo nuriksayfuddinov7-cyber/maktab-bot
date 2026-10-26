@@ -17,9 +17,16 @@ from aiohttp import web
 # Loggingni yoqish
 logging.basicConfig(level=logging.INFO)
 
-# Token
+# Yangi token va admin ID raqamlari
 BOT_TOKEN = "8895093853:AAEUDuEahHHbDGABEKFKQ3q_f2NPZ_3YLag"
 ADMIN_IDS = [728027531, 8489027633]
+
+# Mas'ul shaxslarning Telegram ID raqamlari
+DIRECTOR_ID = 8489027633   # Maktab direktori ID raqami
+PSYCHOLOGIST_ID = 8489027633  # Psixolog ID raqamini shu yerga qo'ying
+OIBDO_ID = 8489027633  # O'IBDO' ID raqamini shu yerga qo'ying
+MMIBDO_ID = 8489027633  # MMIBDO' ID raqamini shu yerga qo'ying
+ADVISOR_ID = 8489027633  # Maslahatchi ID raqamini shu yerga qo'ying
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
@@ -165,7 +172,7 @@ async def process_new_rating(message: types.Message, state: FSMContext):
   await state.clear()
 
 
-# E'lon yuborish (To'g'ridan-to'g'ri barcha guruhlarga)
+# E'lon yuborish (Barcha guruhlarga)
 @dp.message(F.text == "📢 E'lon yuborish")
 @dp.message(Command("elon"))
 async def start_announcement(message: types.Message, state: FSMContext):
@@ -207,7 +214,7 @@ async def send_announcement_to_groups(message: types.Message, state: FSMContext)
   await state.clear()
 
 
-# Murojaat
+# Murojaat yoki Taklif yuborish
 @dp.message(F.text == "✍️ Taklif / Shikoyat yuborish")
 @dp.message(Command("murojaat"))
 async def start_feedback(message: types.Message, state: FSMContext):
@@ -218,10 +225,16 @@ async def start_feedback(message: types.Message, state: FSMContext):
                   text="Maktab direktori", callback_data="to_director"
               )
           ],
-          [InlineKeyboardButton(text="Sinf rahbari", callback_data="to_teacher")],
           [
               InlineKeyboardButton(
                   text="Psixolog", callback_data="to_psychologist"
+              )
+          ],
+          [InlineKeyboardButton(text="O'IBDO'", callback_data="to_oibdo")],
+          [InlineKeyboardButton(text="MMIBDO'", callback_data="to_mmibdo")],
+          [
+              InlineKeyboardButton(
+                  text="Maslahatchi", callback_data="to_advisor"
               )
           ],
       ]
@@ -235,36 +248,50 @@ async def start_feedback(message: types.Message, state: FSMContext):
 @dp.callback_query(F.data.startswith("to_"))
 async def process_recipient(callback: types.CallbackQuery, state: FSMContext):
   recipient_map = {
-      "to_director": "Maktab direktori",
-      "to_teacher": "Sinf rahbari",
-      "to_psychologist": "Psixolog",
+      "to_director": ("Maktab direktori", DIRECTOR_ID),
+      "to_psychologist": ("Psixolog", PSYCHOLOGIST_ID),
+      "to_oibdo": ("O'IBDO'", OIBDO_ID),
+      "to_mmibdo": ("MMIBDO'", MMIBDO_ID),
+      "to_advisor": ("Maslahatchi", ADVISOR_ID),
   }
-  target = recipient_map.get(callback.data, "Admin")
-  await state.update_data(target=target)
+
+  target_name, target_id = recipient_map.get(
+      callback.data, ("Admin", ADMIN_IDS[0])
+  )
+  await state.update_data(target=target_name, target_id=target_id)
+
   await callback.message.edit_text(
-      f"<b>{target}</b>ga yubormoqchi bo'lgan murojaatingiz matnini yozib"
+      f"<b>{target_name}</b>ga yubormoqchi bo'lgan murojaatingiz matnini yozib"
       " qoldiring:"
   )
   await state.set_state(StudentStates.waiting_for_message)
 
 
 @dp.message(StudentStates.waiting_for_message)
-async def send_feedback_to_admin(message: types.Message, state: FSMContext):
+async def send_feedback_to_recipient(message: types.Message, state: FSMContext):
   data = await state.get_data()
-  target = data.get("target", "Admin")
+  target_name = data.get("target", "Admin")
+  target_id = data.get("target_id")
 
-  for admin_id in ADMIN_IDS:
+  if target_id and target_id != 000000000:
     try:
       await bot.send_message(
-          admin_id,
+          target_id,
           f"📩 <b>Yangi murojaat!</b>\n"
-          f"<b>Kimga:</b> {target}\n"
+          f"<b>Kimga:</b> {target_name}\n"
           f"<b>Kimdan:</b> {message.from_user.full_name}\n\n"
           f"<b>Matn:</b> {message.text}",
           parse_mode="HTML",
       )
     except Exception as e:
       logging.error(f"Xatolik: {e}")
+  else:
+    await message.answer(
+        "⚠️ Bu lavozim uchun hali Telegram ID kiritilmagan. Iltimos,"
+        " adminlar bilan bog'laning."
+    )
+    await state.clear()
+    return
 
   await message.answer(
       "Murojaatingiz muvaffaqiyatli yuborildi! Rahmat.", parse_mode="HTML"
