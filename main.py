@@ -17,14 +17,14 @@ from aiohttp import web
 # Loggingni yoqish
 logging.basicConfig(level=logging.INFO)
 
-# Token to'g'ridan-to'g'ri kiritildi
+# Token
 BOT_TOKEN = "8895093853:AAEUDuEahHHbDGABEKFKQ3q_f2NPZ_3YLag"
 ADMIN_IDS = [728027531, 8489027633]
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
 
-# Saqlanuvchi ma'lumotlar uchun o'zgaruvchilar
+# Ma'lumotlar
 CURRENT_RATING = (
     "🏆 <b>Maktab reytingi:</b>\n\n"
     "1. 11-A sinf - 150 ball\n"
@@ -32,6 +32,7 @@ CURRENT_RATING = (
     "3. 10-A sinf - 95 ball"
 )
 ACTIVE_CONTESTS = "Hozircha faol tanlovlar mavjud emas."
+GROUP_IDS = set()
 
 
 # State (Holatlar)
@@ -46,7 +47,19 @@ class StudentStates(StatesGroup):
   waiting_for_message = State()
 
 
-# Admin uchun pastki tugmalar (Reply keyboard)
+# Bot guruhga qo'shilganda ID'sini saqlash
+@dp.my_chat_member()
+async def on_bot_chat_member(event: types.ChatMemberUpdated):
+  chat = event.chat
+  if chat.type in ["group", "supergroup"]:
+    if event.new_chat_member.status in ["member", "administrator"]:
+      GROUP_IDS.add(chat.id)
+    elif event.new_chat_member.status in ["left", "kicked"]:
+      if chat.id in GROUP_IDS:
+        GROUP_IDS.remove(chat.id)
+
+
+# Admin tugmalari
 def get_admin_keyboard():
   return ReplyKeyboardMarkup(
       keyboard=[
@@ -102,14 +115,14 @@ async def show_active_contests(message: types.Message):
   )
 
 
-# Reytingni ko'rsatish
+# Reyting
 @dp.message(F.text == "📊 Reyting")
 @dp.message(Command("reyting"))
 async def show_rating(message: types.Message):
   await message.answer(CURRENT_RATING, parse_mode="HTML")
 
 
-# 1. ADMIN: Tanlov qo'shish
+# Tanlov qo'shish
 @dp.message(F.text == "➕ Yangi tanlov qo'shish")
 @dp.message(Command("yangi_tanlov"))
 async def start_add_contest(message: types.Message, state: FSMContext):
@@ -124,20 +137,20 @@ async def process_contest(message: types.Message, state: FSMContext):
   global ACTIVE_CONTESTS
   ACTIVE_CONTESTS = message.text
   await message.answer(
-      f"✅ Tanlov muvaffaqiyatli saqlandi va yangilandi:\n\n<b>{message.text}</b>",
+      f"✅ Tanlov muvaffaqiyatli saqlandi:\n\n<b>{message.text}</b>",
       parse_mode="HTML",
   )
   await state.clear()
 
 
-# 2. ADMIN: Reyting qo'shish
+# Reyting qo'shish
 @dp.message(F.text == "📊 Reyting qo'shish")
 async def start_add_rating(message: types.Message, state: FSMContext):
   if ADMIN_IDS and message.from_user.id not in ADMIN_IDS:
     return
   await message.answer(
       "Yangi reyting ma'lumotlarini yuboring:\n(Masalan:\n1. 11-A sinf -"
-      " 180 ball\n2. 10-B sinf - 150 ball)"
+      " 180 ball)"
   )
   await state.set_state(AdminStates.waiting_for_rating)
 
@@ -152,39 +165,49 @@ async def process_new_rating(message: types.Message, state: FSMContext):
   await state.clear()
 
 
-# 3. ADMIN: Sinflarga e'lon yuborish
+# E'lon yuborish (To'g'ridan-to'g'ri barcha guruhlarga)
 @dp.message(F.text == "📢 E'lon yuborish")
 @dp.message(Command("elon"))
 async def start_announcement(message: types.Message, state: FSMContext):
   if ADMIN_IDS and message.from_user.id not in ADMIN_IDS:
     return
-  await message.answer("Yubormoqchi bo'lgan e'loningiz matnini kiriting:")
+  await message.answer(
+      "Barcha guruhlarga yubormoqchi bo'lgan e'loningiz matnini kiriting:"
+  )
   await state.set_state(AdminStates.waiting_for_announcement)
 
 
 @dp.message(AdminStates.waiting_for_announcement)
-async def choose_class_for_announcement(
-    message: types.Message, state: FSMContext
-):
-  keyboard = InlineKeyboardMarkup(
-      inline_keyboard=[
-          [
-              InlineKeyboardButton(text="9-sinflar", callback_data="send_9"),
-              InlineKeyboardButton(text="10-sinflar", callback_data="send_10"),
-          ],
-          [
-              InlineKeyboardButton(text="11-sinflar", callback_data="send_11"),
-              InlineKeyboardButton(text="Barcha sinflar", callback_data="send_all"),
-          ],
-      ]
-  )
-  await message.answer(
-      "E'lonni qaysi sinflarga yuborasiz?", reply_markup=keyboard
-  )
+async def send_announcement_to_groups(message: types.Message, state: FSMContext):
+  announcement_text = message.text
+
+  if not GROUP_IDS:
+    await message.answer(
+        "⚠️ Hozircha bot hech qanday guruhga qo'shilmagan. Avval botni"
+        " guruhga qo'shing va admin qiling!"
+    )
+  else:
+    success_count = 0
+    for chat_id in GROUP_IDS:
+      try:
+        await bot.send_message(
+            chat_id,
+            f"📢 <b>Maktab e'loni:</b>\n\n{announcement_text}",
+            parse_mode="HTML",
+        )
+        success_count += 1
+      except Exception as e:
+        logging.error(f"Xatolik: {e}")
+
+    await message.answer(
+        f"✅ E'lon {success_count} ta guruhga muvaffaqiyatli yuborildi!",
+        parse_mode="HTML",
+    )
+
   await state.clear()
 
 
-# 4. Murojaat yoki Taklif yuborish
+# Murojaat
 @dp.message(F.text == "✍️ Taklif / Shikoyat yuborish")
 @dp.message(Command("murojaat"))
 async def start_feedback(message: types.Message, state: FSMContext):
@@ -218,7 +241,6 @@ async def process_recipient(callback: types.CallbackQuery, state: FSMContext):
   }
   target = recipient_map.get(callback.data, "Admin")
   await state.update_data(target=target)
-
   await callback.message.edit_text(
       f"<b>{target}</b>ga yubormoqchi bo'lgan murojaatingiz matnini yozib"
       " qoldiring:"
@@ -237,12 +259,12 @@ async def send_feedback_to_admin(message: types.Message, state: FSMContext):
           admin_id,
           f"📩 <b>Yangi murojaat!</b>\n"
           f"<b>Kimga:</b> {target}\n"
-          f"<b>Kimdan:</b> {message.from_user.full_name} (@{message.from_user.username})\n\n"
+          f"<b>Kimdan:</b> {message.from_user.full_name}\n\n"
           f"<b>Matn:</b> {message.text}",
           parse_mode="HTML",
       )
     except Exception as e:
-      logging.error(f"Xabar yuborishda xatolik: {e}")
+      logging.error(f"Xatolik: {e}")
 
   await message.answer(
       "Murojaatingiz muvaffaqiyatli yuborildi! Rahmat.", parse_mode="HTML"
@@ -250,7 +272,7 @@ async def send_feedback_to_admin(message: types.Message, state: FSMContext):
   await state.clear()
 
 
-# Render uchun veb-server
+# Veb-server
 async def handle(request):
   return web.Response(text="Bot ishlayapti!")
 
