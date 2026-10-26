@@ -18,7 +18,7 @@ from aiohttp import web
 logging.basicConfig(level=logging.INFO)
 
 # Token to'g'ridan-to'g'ri kiritildi
-BOT_TOKEN = "8895093853:AAEZqCDVCWDly9seBbKqBh-SWIR5sMMzw-E"
+BOT_TOKEN = "8895093853:AAEUDuEahHHbDGABEKFKQ3q_f2NPZ_3YLag"
 ADMIN_IDS = [728027531, 8489027633]
 
 bot = Bot(token=BOT_TOKEN)
