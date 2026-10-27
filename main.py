@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import os
 from aiogram import Bot, Dispatcher, F, types
@@ -17,16 +18,16 @@ from aiohttp import web
 # Loggingni yoqish
 logging.basicConfig(level=logging.INFO)
 
-# Yangi token va admin ID raqamlari
+# Token va admin ID raqamlari
 BOT_TOKEN = "8895093853:AAEUDuEahHHbDGABEKFKQ3q_f2NPZ_3YLag"
 ADMIN_IDS = [728027531, 8489027633]
 
 # Mas'ul shaxslarning Telegram ID raqamlari
-DIRECTOR_ID = 8489027633   # Maktab direktori ID raqami
-PSYCHOLOGIST_ID = 8489027633  # Psixolog ID raqamini shu yerga qo'ying
-OIBDO_ID = 8489027633  # O'IBDO' ID raqamini shu yerga qo'ying
-MMIBDO_ID = 8489027633  # MMIBDO' ID raqamini shu yerga qo'ying
-ADVISOR_ID = 8489027633  # Maslahatchi ID raqamini shu yerga qo'ying
+DIRECTOR_ID = 8489027633
+PSYCHOLOGIST_ID = 8489027633
+OIBDO_ID = 8489027633
+MMIBDO_ID = 8489027633
+ADVISOR_ID = 8489027633
 
 bot = Bot(token=BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
@@ -39,7 +40,27 @@ CURRENT_RATING = (
     "3. 10-A sinf - 95 ball"
 )
 ACTIVE_CONTESTS = "Hozircha faol tanlovlar mavjud emas."
-GROUP_IDS = set()
+
+# Guruh ID'larini fayldan avtomatik o'qish va saqlash
+GROUPS_FILE = "groups.json"
+
+
+def load_groups():
+  if os.path.exists(GROUPS_FILE):
+    try:
+      with open(GROUPS_FILE, "r") as f:
+        return set(json.load(f))
+    except:
+      return set()
+  return set()
+
+
+def save_groups(groups):
+  with open(GROUPS_FILE, "w") as f:
+    json.dump(list(groups), f)
+
+
+GROUP_IDS = load_groups()
 
 
 # State (Holatlar)
@@ -54,16 +75,18 @@ class StudentStates(StatesGroup):
   waiting_for_message = State()
 
 
-# Bot guruhga qo'shilganda ID'sini saqlash
+# Bot guruhga qo'shilganda avtomatik saqlash
 @dp.my_chat_member()
 async def on_bot_chat_member(event: types.ChatMemberUpdated):
   chat = event.chat
   if chat.type in ["group", "supergroup"]:
     if event.new_chat_member.status in ["member", "administrator"]:
       GROUP_IDS.add(chat.id)
+      save_groups(GROUP_IDS)
     elif event.new_chat_member.status in ["left", "kicked"]:
       if chat.id in GROUP_IDS:
         GROUP_IDS.remove(chat.id)
+        save_groups(GROUP_IDS)
 
 
 # Admin tugmalari
@@ -156,8 +179,7 @@ async def start_add_rating(message: types.Message, state: FSMContext):
   if ADMIN_IDS and message.from_user.id not in ADMIN_IDS:
     return
   await message.answer(
-      "Yangi reyting ma'lumotlarini yuboring:\n(Masalan:\n1. 11-A sinf -"
-      " 180 ball)"
+      "Yangi reyting ma'lumotlarini yuboring:\n(Masalan:\n11-A sinf - 180 ball)"
   )
   await state.set_state(AdminStates.waiting_for_rating)
 
@@ -273,7 +295,7 @@ async def send_feedback_to_recipient(message: types.Message, state: FSMContext):
   target_name = data.get("target", "Admin")
   target_id = data.get("target_id")
 
-  if target_id and target_id != 000000000:
+  if target_id and target_id != 0:
     try:
       await bot.send_message(
           target_id,
@@ -299,7 +321,7 @@ async def send_feedback_to_recipient(message: types.Message, state: FSMContext):
   await state.clear()
 
 
-# Veb-server
+# Veb-server (Render talabi uchun)
 async def handle(request):
   return web.Response(text="Bot ishlayapti!")
 
