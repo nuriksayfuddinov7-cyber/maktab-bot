@@ -41,31 +41,34 @@ CURRENT_RATING = (
 )
 ACTIVE_CONTESTS = "Hozircha faol tanlovlar mavjud emas."
 
-# Guruh ID'larini fayldan avtomatik o'qish va saqlash
-GROUPS_FILE = "groups.json"
-
-
-def load_groups():
-    if os.path.exists(GROUPS_FILE):
-        try:
-            with open(GROUPS_FILE, "r") as f:
-                return set(json.load(f))
-        except:
-            return set()
-    return set()
-
-
-def save_groups(groups):
-    with open(GROUPS_FILE, "w") as f:
-        json.dump(list(groups), f)
-
-
-GROUP_IDS = load_groups()
+# --- 19 TA SINF GURUHLARINING ID'LARI ---
+SCHOOL_CLASSES = {
+    "class_5d": ("5-D sinf", -5464235621),
+    "class_5e": ("5-E sinf", -5223524246),
+    "class_6d": ("6-D sinf", -5542354727),
+    "class_6e": ("6-E sinf", -5365485659),
+    "class_7d": ("7-D sinf", -5251764629),
+    "class_7e": ("7-E sinf", -5234651636),
+    "class_7g": ("7-G sinf", -5183862151),
+    "class_7v": ("7-V sinf", -5492840488),
+    "class_8d": ("8-D sinf", -5224077025),
+    "class_8e": ("8-E sinf", -5598684484),
+    "class_9d": ("9-D sinf", -5288612821),
+    "class_9e": ("9-E sinf", -5340753966),
+    "class_9g": ("9-G sinf", -5219547822),
+    "class_10d": ("10-D sinf", -5150476450),
+    "class_10e": ("10-E sinf", -5182347375),
+    "class_10g": ("10-G sinf", -5377555918),
+    "class_11d": ("11-D sinf", -5495400023),
+    "class_11e": ("11-E sinf", -5248398629),
+    "class_11g": ("11-G sinf", -5370728668),
+}
 
 
 # State (Holatlar)
 class AdminStates(StatesGroup):
     waiting_for_contest_name = State()
+    choosing_classes_for_announcement = State()
     waiting_for_announcement = State()
     waiting_for_rating = State()
 
@@ -73,20 +76,6 @@ class AdminStates(StatesGroup):
 class StudentStates(StatesGroup):
     choosing_recipient = State()
     waiting_for_message = State()
-
-
-# Bot guruhga qo'shilganda avtomatik saqlash
-@dp.my_chat_member()
-async def on_bot_chat_member(event: types.ChatMemberUpdated):
-    chat = event.chat
-    if chat.type in ["group", "supergroup"]:
-        if event.new_chat_member.status in ["member", "administrator"]:
-            GROUP_IDS.add(chat.id)
-            save_groups(GROUP_IDS)
-        elif event.new_chat_member.status in ["left", "kicked"]:
-            if chat.id in GROUP_IDS:
-                GROUP_IDS.remove(chat.id)
-                save_groups(GROUP_IDS)
 
 
 # Admin tugmalari
@@ -136,7 +125,7 @@ async def cmd_start(message: types.Message):
         )
 
 
-# Faol tanlovlar
+# Faol tanlovlar va Reyting
 @dp.message(F.text == "🏆 Faol tanlovlar")
 async def show_active_contests(message: types.Message):
     await message.answer(
@@ -144,14 +133,13 @@ async def show_active_contests(message: types.Message):
     )
 
 
-# Reyting
 @dp.message(F.text == "📊 Reyting")
 @dp.message(Command("reyting"))
 async def show_rating(message: types.Message):
     await message.answer(CURRENT_RATING, parse_mode="HTML")
 
 
-# Tanlov qo'shish
+# Tanlov va Reyting qo'shish (Admin)
 @dp.message(F.text == "➕ Yangi tanlov qo'shish")
 @dp.message(Command("yangi_tanlov"))
 async def start_add_contest(message: types.Message, state: FSMContext):
@@ -166,13 +154,12 @@ async def process_contest(message: types.Message, state: FSMContext):
     global ACTIVE_CONTESTS
     ACTIVE_CONTESTS = message.text
     await message.answer(
-        f"✅ Tanlov muvaffaqiyatli saqlandi:\n\n<b>{message.text}</b>",
+        f"✅ Tanlangan tanlov muvaffaqiyatli saqlandi:\n\n<b>{message.text}</b>",
         parse_mode="HTML",
     )
     await state.clear()
 
 
-# Reyting qo'shish
 @dp.message(F.text == "📊 Reyting qo'shish")
 async def start_add_rating(message: types.Message, state: FSMContext):
     if ADMIN_IDS and message.from_user.id not in ADMIN_IDS:
@@ -193,44 +180,136 @@ async def process_new_rating(message: types.Message, state: FSMContext):
     await state.clear()
 
 
-# E'lon yuborish (Barcha guruhlarga)
+# --- BIR NECHTA SINFLARNI TANLAB E'LON YUBORISH ---
+
+
+def generate_classes_keyboard(selected_classes=None):
+    if selected_classes is None:
+        selected_classes = []
+
+    keyboard_buttons = []
+    row = []
+
+    # Har bir qatorga 2 tadan sinf tugmachasini joylaymiz
+    for key, (class_name, _) in SCHOOL_CLASSES.items():
+        is_selected = key in selected_classes
+        icon = "✅ " if is_selected else ""
+        text = f"{icon}{class_name}"
+
+        row.append(InlineKeyboardButton(text=text, callback_data=f"sel_{key}"))
+        if len(row) == 2:
+            keyboard_buttons.append(row)
+            row = []
+
+    if row:
+        keyboard_buttons.append(row)
+
+    # Maxsus boshqaruv tugmalari
+    keyboard_buttons.append(
+        [
+            InlineKeyboardButton(text="☑️ Hammasini tanlash", callback_data="sel_all"),
+            InlineKeyboardButton(text="❌ Tozalash", callback_data="sel_clear"),
+        ]
+    )
+    keyboard_buttons.append(
+        [InlineKeyboardButton(text="🚀 E'lon matnini kiritish", callback_data="sel_done")]
+    )
+
+    return InlineKeyboardMarkup(inline_keyboard=keyboard_buttons)
+
+
 @dp.message(F.text == "📢 E'lon yuborish")
 @dp.message(Command("elon"))
 async def start_announcement(message: types.Message, state: FSMContext):
     if ADMIN_IDS and message.from_user.id not in ADMIN_IDS:
         return
+
+    # Tanlangan sinflar ro'yxatini boshlang'ich holatda bo'sh qilamiz
+    await state.update_data(selected_classes=[])
+
+    keyboard = generate_classes_keyboard([])
     await message.answer(
-        "Barcha guruhlarga yubormoqchi bo'lgan e'loningiz matnini kiriting:"
+        "📢 E'lon yubormoqchi bo'lgan sinflarni tanlang (ustiga bosib belgilang):\n\n"
+        "Tanlab bo'lgach, pastdagi <b>'🚀 E'lon matnini kiritish'</b> tugmasini bosing:",
+        reply_markup=keyboard,
+        parse_mode="HTML",
     )
-    await state.set_state(AdminStates.waiting_for_announcement)
+    await state.set_state(AdminStates.choosing_classes_for_announcement)
+
+
+@dp.callback_query(
+    AdminStates.choosing_classes_for_announcement, F.data.startswith("sel_")
+)
+async def process_class_selection(
+    callback: types.CallbackQuery, state: FSMContext
+):
+    action = callback.data.replace("sel_", "")
+    data = await state.get_data()
+    selected = data.get("selected_classes", [])
+
+    if action == "all":
+        selected = list(SCHOOL_CLASSES.keys())
+    elif action == "clear":
+        selected = []
+    elif action == "done":
+        if not selected:
+            await callback.answer(
+                "⚠️ Hech qanday sinf tanlanmadi!", show_alert=True
+            )
+            return
+        await callback.message.edit_text(
+            f"✅ Tanlangan sinflar soni: {len(selected)} ta.\n\n"
+            "Endi yubormoqchi bo'lgan <b>e'lon matnini</b> yuboring:"
+        )
+        await state.set_state(AdminStates.waiting_for_announcement)
+        return
+    else:
+        # Sinf tugmasi bosilganda (toggle)
+        if action in selected:
+            selected.remove(action)
+        else:
+            selected.append(action)
+
+    await state.update_data(selected_classes=selected)
+
+    # Tugmalarni yangilangan holatda qayta chizamiz
+    keyboard = generate_classes_keyboard(selected)
+    try:
+        await callback.message.edit_reply_markup(reply_markup=keyboard)
+    except Exception:
+        pass
+    await callback.answer()
 
 
 @dp.message(AdminStates.waiting_for_announcement)
-async def send_announcement_to_groups(message: types.Message, state: FSMContext):
+async def send_announcement_to_classes(message: types.Message, state: FSMContext):
+    data = await state.get_data()
+    selected_keys = data.get("selected_classes", [])
     announcement_text = message.text
 
-    if not GROUP_IDS:
-        await message.answer(
-            "⚠️ Hozircha bot hech qanday guruhga qo'shilmagan. Avval botni guruhga qo'shing va admin qiling!"
-        )
-    else:
-        success_count = 0
-        for chat_id in GROUP_IDS:
+    if not selected_keys:
+        await message.answer("⚠️ Sinf tanlanmagan!")
+        await state.clear()
+        return
+
+    success_count = 0
+    for key in selected_keys:
+        if key in SCHOOL_CLASSES:
+            c_name, c_id = SCHOOL_CLASSES[key]
             try:
                 await bot.send_message(
-                    chat_id,
-                    f"📢 <b>Maktab e'loni:</b>\n\n{announcement_text}",
+                    c_id,
+                    f"📢 <b>Maktab e'loni ({c_name}):</b>\n\n{announcement_text}",
                     parse_mode="HTML",
                 )
                 success_count += 1
             except Exception as e:
-                logging.error(f"Xatolik: {e}")
+                logging.error(f"Xatolik {c_name} ga yuborishda: {e}")
 
-        await message.answer(
-            f"✅ E'lon {success_count} ta guruhga muvaffaqiyatli yuborildi!",
-            parse_mode="HTML",
-        )
-
+    await message.answer(
+        f"✅ E'lon muvaffaqiyatli ravishda {success_count} ta sinf guruhiga yuborildi!",
+        parse_mode="HTML",
+    )
     await state.clear()
 
 
@@ -265,7 +344,7 @@ async def start_feedback(message: types.Message, state: FSMContext):
     await state.set_state(StudentStates.choosing_recipient)
 
 
-@dp.callback_query(F.data.startswith("to_"))
+@dp.callback_query(StudentStates.choosing_recipient, F.data.startswith("to_"))
 async def process_recipient(callback: types.CallbackQuery, state: FSMContext):
     recipient_map = {
         "to_director": ("Maktab direktori", DIRECTOR_ID),
@@ -336,7 +415,6 @@ async def web_server():
 
 async def main():
     await web_server()
-    # Eski webhook va qolib ketgan xabarlarni tozalash
     await bot.delete_webhook(drop_pending_updates=True)
     print("Bot muvaffaqiyatli ishga tushdi!")
     await dp.start_polling(bot)
